@@ -1,9 +1,9 @@
-import { getChatGPTUser } from '@/app/chatgpt-auth';
+import { getAppUser } from '@/app/auth';
 import { HttpError } from './desk-service';
 import { ZodError } from 'zod';
 export function api(action:(userId:string,request:Request)=>Promise<unknown>){return async(request:Request)=>{
  try{
-  const user=await getChatGPTUser();if(!user)throw new HttpError(401,'로그인이 필요합니다.');
+  const user=await getAppUser();if(!user)throw new HttpError(401,'로그인이 필요합니다.');
   if(request.method!=='GET'){
    const origin=request.headers.get('origin');if(origin&&origin!==new URL(request.url).origin)throw new HttpError(403,'허용되지 않은 요청입니다.');
    if(!request.headers.get('content-type')?.includes('application/json'))throw new HttpError(415,'JSON 요청이 필요합니다.');

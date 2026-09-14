@@ -1,4 +1,12 @@
 import { sqliteTable, text, integer, primaryKey, index } from 'drizzle-orm/sqlite-core';
+export const users = sqliteTable('users', {
+ id: text('id').primaryKey(), email: text('email').notNull().unique(), displayName: text('display_name').notNull(),
+ passwordHash: text('password_hash').notNull(), passwordSalt: text('password_salt').notNull(), createdAt: text('created_at').notNull(),
+});
+export const sessions = sqliteTable('sessions', {
+ tokenHash: text('token_hash').primaryKey(), userId: text('user_id').notNull().references(()=>users.id,{onDelete:'cascade'}),
+ expiresAt: integer('expires_at').notNull(), createdAt: text('created_at').notNull(),
+}, t => [index('idx_sessions_user_id').on(t.userId),index('idx_sessions_expires_at').on(t.expiresAt)]);
 export const settings = sqliteTable('settings', {
  userId: text('user_id').primaryKey(), publishers: text('publishers').notNull().default('[]'),
  revision: integer('revision').notNull().default(0), refreshUntil: integer('refresh_until').notNull().default(0),
