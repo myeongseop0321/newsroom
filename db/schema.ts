@@ -16,6 +16,10 @@ export const articles = sqliteTable('articles', {
  id: text('id').primaryKey(), publisher: text('publisher').notNull(), title: text('title').notNull(), url: text('url').notNull(),
  section: text('section').notNull(), publishedAt: text('published_at'), collectedAt: text('collected_at').notNull(), image: text('image'),
 }, t => [index('idx_articles_publisher_collected').on(t.publisher,t.collectedAt)]);
+export const articleContents = sqliteTable('article_contents', {
+ articleId: text('article_id').primaryKey().references(()=>articles.id,{onDelete:'cascade'}), body: text('body').notNull().default('[]'),
+ author: text('author'), publishedAt: text('published_at'), image: text('image'), status: text('status').notNull(), fetchedAt: text('fetched_at').notNull(),
+}, t => [index('idx_article_contents_fetched_at').on(t.fetchedAt)]);
 export const scraps = sqliteTable('scraps', {
  userId: text('user_id').notNull(), articleId: text('article_id').notNull().references(()=>articles.id), createdAt: text('created_at').notNull(),
 }, t => [primaryKey({columns:[t.userId,t.articleId]})]);
