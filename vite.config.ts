@@ -1,17 +1,41 @@
 import vinext from "vinext";
 import { defineConfig } from "vite";
+import { readFileSync } from "node:fs";
 import hostingConfig from "./.openai/hosting.json";
 import { readExecutionProfile } from "./scripts/execution-profile.mjs";
 import { sites } from "./build/sites-vite-plugin";
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   "00000000-0000-4000-8000-000000000000";
+const cloudflareD1 = readCloudflareD1Config();
+const d1DatabaseName =
+  process.env.CLOUDFLARE_D1_DATABASE_NAME ??
+  cloudflareD1?.database_name ??
+  "site-creator-d1";
+const d1DatabaseId =
+  process.env.CLOUDFLARE_D1_DATABASE_ID ??
+  cloudflareD1?.database_id ??
+  SITE_CREATOR_PLACEHOLDER_DATABASE_ID;
 
 const { d1, r2 } = hostingConfig;
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const managedLinux = readExecutionProfile() === "managed-linux";
+
+function readCloudflareD1Config():
+  | { database_name: string; database_id: string }
+  | null {
+  try {
+    const rawConfig = readFileSync(new URL("./wrangler.jsonc", import.meta.url), "utf8");
+    const config = JSON.parse(rawConfig) as {
+      d1_databases?: Array<{ binding: string; database_name: string; database_id: string }>;
+    };
+    return config.d1_databases?.find((database) => database.binding === d1) ?? null;
+  } catch {
+    return null;
+  }
+}
 
 const localBindingConfig = {
   main: "vinext/server/fetch-handler",
@@ -20,8 +44,8 @@ const localBindingConfig = {
     ? [
         {
           binding: d1,
-          database_name: "site-creator-d1",
-          database_id: SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
+          database_name: d1DatabaseName,
+          database_id: d1DatabaseId,
         },
       ]
     : [],

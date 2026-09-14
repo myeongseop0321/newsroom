@@ -9,10 +9,13 @@
     "install:ci": "node scripts/install-ci.mjs",
     "dev": "node scripts/run-framework.mjs dev",
     "build": "node scripts/run-framework.mjs build",
+    "build:cloudflare": "node scripts/run-framework.mjs build",
+    "deploy:cloudflare": "wrangler deploy --config dist/server/wrangler.json --name pressroom-korea --var OPENAI_MODEL:gpt-4.1-mini",
     "start": "node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js dev --config dist/server/wrangler.json --local --persist-to .wrangler/state --ip 127.0.0.1 --inspector-port 0",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "db:local": "node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 migrations apply DB --local --config wrangler.local.json --persist-to .wrangler/state",
+    "db:cloudflare": "wrangler d1 migrations apply pressroom-db --remote",
     "typecheck": "tsc --noEmit",
     "check:news": "node scripts/check-news.mjs",
     "check:api": "node scripts/check-api.mjs"

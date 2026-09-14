@@ -1,0 +1,14 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "pressroom-korea",
+  "compatibility_date": "2026-05-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pressroom-db",
+      "database_id": "61dca280-6f01-463b-bc14-3bf5bd2e66ad",
+      "migrations_dir": "drizzle"
+    }
+  ]
+}
