@@ -8,16 +8,18 @@ export function canonical(raw:string,base:string) {
  const u=new URL(raw,base), allowed=new URL(base).hostname.replace(/^www\./,'');
  if(u.protocol!=='https:'&&u.protocol!=='http:')throw Error('Invalid URL');
  if(u.hostname!==allowed&&!u.hostname.endsWith('.'+allowed))throw Error('Foreign URL');
- u.protocol='https:';u.hash='';u.search='';return u.href;
+ u.protocol='https:';u.hash='';
+ for(const key of [...u.searchParams.keys()])if(/^utm(?:_|$)|^(fbclid|gclid|ref|source)$/i.test(key))u.searchParams.delete(key);
+ return u.href;
 }
 export function extract(html:string,p:typeof publishers[number],section:Article['section']) {
  const found=new Map<string,{title:string;url:string}>();
  const root=parse(html);root.querySelectorAll('script,style,header,footer,nav').forEach(el=>el.remove());
  for(const anchor of root.querySelectorAll('a[href]')) {
   const href=anchor.getAttribute('href');if(!href)continue;
-  try {const url=canonical(plain(href),p.home);if(!new RegExp(p.articlePattern).test(new URL(url).pathname))continue;
+  try {const url=canonical(plain(href),p.home),parsedUrl=new URL(url);if(!new RegExp(p.articlePattern,'i').test(parsedUrl.pathname+parsedUrl.search))continue;
    const heading=anchor.querySelector('h1,h2,h3,h4,h5,strong,.tit,.title,.news_ttl');
-   const title=(heading?.textContent||anchor.getAttribute('title')||anchor.textContent).replace(/\s+/g,' ').trim();if(title.length<12||title.length>220)continue;
+   const rawTitle=(heading?.textContent||anchor.getAttribute('title')||anchor.textContent).replace(/\s+/g,' ').trim(), repeated=rawTitle.match(/^(.{12,}?)\s+\1$/),title=repeated?.[1]||rawTitle;if(title.length<12||title.length>220)continue;
    if(/구독료|구독 신청|광고 문의/.test(title)||/\/special\/|\/promotion\//.test(url))continue;
    if(section==='opinion'&&['chosun','hani','seoul','mk'].includes(p.id)&&!/(opinion|editorial|editOpinion|column)/i.test(url))continue;
    const date=url.match(/\/(20\d{2})\/(\d{2})\/(\d{2})\//)||url.match(/\/(20\d{2})(\d{2})(\d{2})\d{4,}/);
@@ -33,11 +35,21 @@ export async function collect(p:typeof publishers[number],section:Article['secti
   const response=await fetch(section==='front'?p.home:p.opinion,{signal:AbortSignal.timeout(15000),headers:{'User-Agent':'Pressroom/1.0 (headline reader)','Accept':'text/html'}});
   if(!response.ok)throw Error(`HTTP ${response.status}`);
   const html=await response.text();if(html.length>8_000_000)throw Error('응답 크기 초과');
-  const rows=extract(html,p,section);if(!rows.length)throw Error('기사 링크를 찾지 못했습니다.');
-  const articles=await Promise.all(rows.map(async row=>({ ...row,id:Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(row.url)))).map(x=>x.toString(16).padStart(2,'0')).join(''),publisher:p.id,section,publishedAt:null,collectedAt:now,image:null })));
+  const rows=extract(html,p,section), feedRows=section==='front'&&p.rss?await feed(p).catch(()=>[]):[];
+  const merged=new Map([...feedRows,...rows].map(row=>[row.url,row]));if(!merged.size)throw Error('기사 링크를 찾지 못했습니다.');
+  const articles=await Promise.all([...merged.values()].slice(0,32).map(async row=>({ ...row,id:Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(row.url)))).map(x=>x.toString(16).padStart(2,'0')).join(''),publisher:p.id,section,publishedAt:'publishedAt' in row&&typeof row.publishedAt==='string'?row.publishedAt:null,collectedAt:now,image:null })));
   status.count=articles.length;return {articles,status};
  }catch(e){status.status='error';status.message=e instanceof Error?e.message:'수집 실패';return {articles:[],status};}
 }
+async function feed(p:typeof publishers[number]):Promise<{title:string;url:string;publishedAt:string|null}[]> {
+ const response=await fetch(p.rss,{signal:AbortSignal.timeout(10000),headers:{'User-Agent':'Pressroom/1.0 (RSS reader)','Accept':'application/rss+xml,application/xml,text/xml'}});if(!response.ok)throw Error(`RSS HTTP ${response.status}`);
+ const root=parse(await response.text()), rows=[] as {title:string;url:string;publishedAt:string|null}[];
+ for(const item of root.querySelectorAll('item,entry')){const title=cleanFeed(item.querySelector('title')?.textContent||'');const raw=item.querySelector('link')?.getAttribute('href')||item.querySelector('link')?.textContent||'';if(title.length<12||!raw)continue;
+  try{const url=canonical(cleanFeed(raw),p.home),u=new URL(url);if(!new RegExp(p.articlePattern,'i').test(u.pathname+u.search))continue;const rawDate=cleanFeed(item.querySelector('pubDate,published,updated,dc\\:date')?.textContent||'');const parsed=Date.parse(rawDate);rows.push({title,url,publishedAt:Number.isNaN(parsed)?null:new Date(parsed).toISOString()});}catch{continue;}
+ }
+ return rows.slice(0,32);
+}
+const cleanFeed=(value:string)=>value.replace(/<!\[CDATA\[|\]\]>/g,'').replace(/<[^>]+>/g,' ').replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/\s+/g,' ').trim();
 const tokens=(s:string)=>new Set(s.replace(/\[[^\]]*\]/g,'').toLowerCase().match(/[가-힣a-z0-9]{2,}/g)||[]);
 export function keywordTopics(articles:Article[]):Topic[] {
  const groups:Article[][]=[];
@@ -49,4 +61,17 @@ export function validateTopics(topics:Topic[],articles:Article[]):Topic[] {
  return topics.map(t=>{const ids=[...new Set(t.articleIds)].filter(id=>byId.has(id)&&!used.has(id));const count=new Set(ids.map(id=>byId.get(id)!.publisher)).size;
   if(count<2)return null;ids.forEach(id=>used.add(id));return {...t,title:t.title.slice(0,150),summary:t.summary.slice(0,500),articleIds:ids,publisherCount:count};
  }).filter((t):t is Topic=>!!t).sort((a,b)=>b.publisherCount-a.publisherCount||Math.max(...b.articleIds.map(id=>Date.parse(byId.get(id)!.collectedAt)))-Math.max(...a.articleIds.map(id=>Date.parse(byId.get(id)!.collectedAt)))).slice(0,10);
+}
+
+const timelineStopWords=new Set(['단독','속보','종합','영상','포토','오늘','내일','관련','대한','통해','위해','기자','정부','국민','한국','서울','대통령','대표','위원장','밝혀','논란','뉴스']);
+const topicTokens=(title:string)=>[...tokens(title)].filter(token=>!timelineStopWords.has(token)&&!/^\d+$/.test(token));
+export function buildTimeline(articles:Article[]) {
+ const groups:{articles:Article[];terms:Map<string,number>}[]=[];
+ for(const article of articles.slice(0,1800)){const words=topicTokens(article.title);if(words.length<2)continue;let best:{group:typeof groups[number];score:number}|null=null;
+  for(const group of groups){const common=words.filter(word=>group.terms.has(word));const score=common.length/Math.max(2,Math.min(words.length,group.terms.size));if(common.length>=2&&score>=0.34&&(!best||score>best.score))best={group,score};}
+  if(best){best.group.articles.push(article);for(const word of words)best.group.terms.set(word,(best.group.terms.get(word)||0)+1);}else groups.push({articles:[article],terms:new Map(words.map(word=>[word,1]))});
+ }
+ return groups.map(group=>{const uniquePublishers=new Set(group.articles.map(article=>article.publisher));if(uniquePublishers.size<2)return null;const keywords=[...group.terms].sort((a,b)=>b[1]-a[1]||b[0].length-a[0].length).slice(0,3).map(([word])=>word);const points=group.articles.map(article=>({id:article.id,publisher:article.publisher,title:article.title,at:article.publishedAt||article.collectedAt})).filter(point=>!Number.isNaN(Date.parse(point.at))).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at)).slice(-80);
+  return {title:keywords.join(' · ')||group.articles[0].title,keywords,publisherCount:uniquePublishers.size,articleCount:group.articles.length,points};
+ }).filter((topic):topic is NonNullable<typeof topic>=>!!topic).sort((a,b)=>b.publisherCount-a.publisherCount||b.articleCount-a.articleCount||Date.parse(b.points.at(-1)?.at||'')-Date.parse(a.points.at(-1)?.at||'')).slice(0,10);
 }

@@ -11,6 +11,7 @@
     "build": "node scripts/run-framework.mjs build",
     "build:cloudflare": "node scripts/run-framework.mjs build",
     "deploy:cloudflare": "wrangler deploy --config dist/server/wrangler.json --name pressroom-korea --var OPENAI_MODEL:gpt-4.1-mini",
+    "deploy:collector": "wrangler deploy --config wrangler.collector.jsonc",
     "start": "node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js dev --config dist/server/wrangler.json --local --persist-to .wrangler/state --ip 127.0.0.1 --inspector-port 0",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",

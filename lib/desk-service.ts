@@ -1,7 +1,7 @@
 import { database } from '@/db';
-import { publishers, type Article, type DeskState, type SourceStatus, type Topic } from './publishers';
+import { publishers, type Article, type DeskState, type FollowupState, type SourceStatus, type Topic } from './publishers';
 import { aiAvailable, rank } from './ranking';
-import { collect, validateTopics } from './news';
+import { buildTimeline, collect, keywordTopics, validateTopics } from './news';
 export class HttpError extends Error {constructor(public status:number,message:string){super(message);}}
 type Setting={publishers:string;revision:number;topics:string;analysis_mode:string;analysis_at:string|null};
 const columns='a.id,a.publisher,a.title,a.url,a.section,a.published_at AS publishedAt,a.collected_at AS collectedAt,a.image';
@@ -11,7 +11,14 @@ export async function desk(userId:string):Promise<DeskState>{
  const saved=await db.prepare(`SELECT ${columns} FROM scraps s JOIN articles a ON a.id=s.article_id WHERE s.user_id=? ORDER BY s.created_at DESC`).bind(userId).all<Article>();
  const articles=selected.length?(await db.prepare(`SELECT ${columns} FROM articles a WHERE a.publisher IN (${selected.map(()=>'?').join(',')}) AND a.collected_at>=? ORDER BY a.collected_at DESC LIMIT 500`).bind(...selected,new Date(Date.now()-48*3600000).toISOString()).all<Article>()).results:[];
  const statuses=selected.length?(await db.prepare(`SELECT publisher,section,status,count,checked_at AS checkedAt,message FROM sources WHERE publisher IN (${selected.map(()=>'?').join(',')})`).bind(...selected).all<SourceStatus>()).results:[];
- return {selected,articles,scraps:saved.results,topics:validateTopics(JSON.parse(s?.topics||'[]') as Topic[],articles),statuses,analysisMode:s?.analysis_mode||'none',analysisAt:s?.analysis_at||null,aiAvailable:aiAvailable()};
+ const savedTopics=validateTopics(JSON.parse(s?.topics||'[]') as Topic[],articles),topics=savedTopics.length?savedTopics:keywordTopics(articles);
+ const cutoff=new Date(Date.now()-10*60*1000).toISOString();
+ const breaking=selected.length?(await db.prepare(`SELECT ${columns} FROM articles a WHERE a.publisher IN (${selected.map(()=>'?').join(',')}) AND a.section='front' AND COALESCE(a.published_at,a.collected_at)>=? ORDER BY COALESCE(a.published_at,a.collected_at) DESC LIMIT 20`).bind(...selected,cutoff).all<Article>()).results:[];
+ return {selected,articles,scraps:saved.results,topics,breaking,statuses,analysisMode:s?.analysis_mode||'none',analysisAt:s?.analysis_at||null,aiAvailable:aiAvailable()};
+}
+export async function followup():Promise<FollowupState>{
+ const days=30,to=new Date(),from=new Date(Date.now()-days*86400000),rows=(await database().prepare(`SELECT ${columns} FROM articles a WHERE COALESCE(a.published_at,a.collected_at)>=? ORDER BY COALESCE(a.published_at,a.collected_at) DESC LIMIT 1800`).bind(from.toISOString()).all<Article>()).results;
+ return {days,from:from.toISOString(),to:to.toISOString(),topics:buildTimeline(rows),publisherCount:new Set(rows.map(row=>row.publisher)).size};
 }
 export async function saveSettings(userId:string,selected:string[]){
  await database().prepare("INSERT INTO settings(user_id,publishers) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET publishers=excluded.publishers,revision=revision+1,topics='[]',analysis_mode='none',analysis_at=NULL").bind(userId,JSON.stringify(selected)).run();
@@ -24,7 +31,7 @@ export async function refresh(userId:string){
   const results=await Promise.all(publishers.filter(p=>selected.includes(p.id)).flatMap(p=>(['front','opinion'] as const).map(section=>collect(p,section))));
   const statements:D1PreparedStatement[]=[];
   for(const {articles,status} of results){
-   for(const a of articles)statements.push(db.prepare("INSERT INTO articles(id,publisher,title,url,section,published_at,collected_at,image) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,collected_at=excluded.collected_at,section=CASE WHEN articles.section='opinion' THEN 'opinion' ELSE excluded.section END").bind(a.id,a.publisher,a.title,a.url,a.section,a.publishedAt,a.collectedAt,a.image));
+   for(const a of articles)statements.push(db.prepare("INSERT INTO articles(id,publisher,title,url,section,published_at,collected_at,image) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,published_at=COALESCE(excluded.published_at,articles.published_at),section=CASE WHEN articles.section='opinion' THEN 'opinion' ELSE excluded.section END").bind(a.id,a.publisher,a.title,a.url,a.section,a.publishedAt,a.collectedAt,a.image));
    statements.push(db.prepare('INSERT INTO sources(publisher,section,status,count,checked_at,message) VALUES(?,?,?,?,?,?) ON CONFLICT(publisher,section) DO UPDATE SET status=excluded.status,count=excluded.count,checked_at=excluded.checked_at,message=excluded.message').bind(status.publisher,status.section,status.status,status.count,status.checkedAt,status.message));
   }
   for(let i=0;i<statements.length;i+=50)await db.batch(statements.slice(i,i+50));

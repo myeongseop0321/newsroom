@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "pressroom-news-collector",
+  "main": "workers/news-collector.ts",
+  "compatibility_date": "2026-09-14",
+  "compatibility_flags": ["nodejs_compat"],
+  "triggers": { "crons": ["*/10 * * * *"] },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pressroom-db",
+      "database_id": "61dca280-6f01-463b-bc14-3bf5bd2e66ad"
+    }
+  ]
+}
