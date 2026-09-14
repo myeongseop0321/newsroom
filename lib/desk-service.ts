@@ -16,9 +16,10 @@ export async function desk(userId:string):Promise<DeskState>{
  const breaking=selected.length?(await db.prepare(`SELECT ${columns} FROM articles a WHERE a.publisher IN (${selected.map(()=>'?').join(',')}) AND a.section='front' AND COALESCE(a.published_at,a.collected_at)>=? ORDER BY COALESCE(a.published_at,a.collected_at) DESC LIMIT 20`).bind(...selected,cutoff).all<Article>()).results:[];
  return {selected,articles,scraps:saved.results,topics,breaking,statuses,analysisMode:s?.analysis_mode||'none',analysisAt:s?.analysis_at||null,aiAvailable:aiAvailable()};
 }
-export async function followup():Promise<FollowupState>{
- const days=30,to=new Date(),from=new Date(Date.now()-days*86400000),rows=(await database().prepare(`SELECT ${columns} FROM articles a WHERE COALESCE(a.published_at,a.collected_at)>=? ORDER BY COALESCE(a.published_at,a.collected_at) DESC LIMIT 1800`).bind(from.toISOString()).all<Article>()).results;
- return {days,from:from.toISOString(),to:to.toISOString(),topics:buildTimeline(rows),publisherCount:new Set(rows.map(row=>row.publisher)).size};
+export async function followup(days=90):Promise<FollowupState>{
+ const safeDays=[30,60,90,120].includes(days)?days:90,to=new Date(),from=new Date(Date.now()-safeDays*86400000),rows=(await database().prepare(`SELECT ${columns} FROM articles a WHERE COALESCE(a.published_at,a.collected_at)>=? ORDER BY COALESCE(a.published_at,a.collected_at) DESC LIMIT 3000`).bind(from.toISOString()).all<Article>()).results;
+ const times=rows.map(row=>Date.parse(row.publishedAt||row.collectedAt)).filter(Number.isFinite),first=times.length?Math.min(...times):from.getTime(),last=times.length?Math.max(...times):to.getTime(),padding=Math.max(3600000,(last-first)*.025);
+ return {days:safeDays,from:new Date(Math.max(from.getTime(),first-padding)).toISOString(),to:new Date(Math.min(to.getTime()+padding,last+padding)).toISOString(),topics:buildTimeline(rows),publisherCount:new Set(rows.map(row=>row.publisher)).size};
 }
 export async function saveSettings(userId:string,selected:string[]){
  await database().prepare("INSERT INTO settings(user_id,publishers) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET publishers=excluded.publishers,revision=revision+1,topics='[]',analysis_mode='none',analysis_at=NULL").bind(userId,JSON.stringify(selected)).run();

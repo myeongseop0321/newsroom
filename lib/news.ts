@@ -12,8 +12,8 @@ export function canonical(raw:string,base:string) {
  for(const key of [...u.searchParams.keys()])if(/^utm(?:_|$)|^(fbclid|gclid|ref|source)$/i.test(key))u.searchParams.delete(key);
  return u.href;
 }
-export function extract(html:string,p:typeof publishers[number],section:Article['section']) {
- const found=new Map<string,{title:string;url:string}>();
+export function extract(html:string,p:typeof publishers[number],section:Article['section'],maxAgeDays=4) {
+ const found=new Map<string,{title:string;url:string;publishedAt:string|null}>();
  const root=parse(html);root.querySelectorAll('script,style,header,footer,nav').forEach(el=>el.remove());
  for(const anchor of root.querySelectorAll('a[href]')) {
   const href=anchor.getAttribute('href');if(!href)continue;
@@ -22,12 +22,21 @@ export function extract(html:string,p:typeof publishers[number],section:Article[
    const rawTitle=(heading?.textContent||anchor.getAttribute('title')||anchor.textContent).replace(/\s+/g,' ').trim(), repeated=rawTitle.match(/^(.{12,}?)\s+\1$/),title=repeated?.[1]||rawTitle;if(title.length<12||title.length>220)continue;
    if(/구독료|구독 신청|광고 문의/.test(title)||/\/special\/|\/promotion\//.test(url))continue;
    if(section==='opinion'&&['chosun','hani','seoul','mk'].includes(p.id)&&!/(opinion|editorial|editOpinion|column)/i.test(url))continue;
-   const date=url.match(/\/(20\d{2})\/(\d{2})\/(\d{2})\//)||url.match(/\/(20\d{2})(\d{2})(\d{2})\d{4,}/);
-   if(date){const age=Date.now()-Date.parse(`${date[1]}-${date[2]}-${date[3]}T00:00:00+09:00`);if(age>4*86400000||age< -86400000)continue;}
-   if(!found.has(url))found.set(url,{title,url});
+   const date=url.match(/(20\d{2})[\/.\-](\d{2})[\/.\-](\d{2})/)||url.match(/(20\d{2})(\d{2})(\d{2})\d{4,}/),publishedAt=date?new Date(`${date[1]}-${date[2]}-${date[3]}T00:00:00+09:00`).toISOString():null;
+   if(publishedAt){const age=Date.now()-Date.parse(publishedAt);if(age>maxAgeDays*86400000||age< -86400000)continue;}
+   if(!found.has(url))found.set(url,{title,url,publishedAt});
   } catch {continue;}
  }
  return [...found.values()].slice(0,section==='front'?24:16);
+}
+export async function discoverHistory(p:typeof publishers[number],seed:Article|undefined,days=120) {
+ if(!seed)return [] as Article[];
+ try{
+  const response=await fetch(seed.url,{signal:AbortSignal.timeout(12000),headers:{'User-Agent':'Pressroom/1.0 (related headline indexer)','Accept':'text/html'}});if(!response.ok)return [];
+  const html=await response.text();if(html.length>8_000_000)return [];
+  const cutoff=Date.now()-days*86400000, now=Date.now()+86400000, rows=extract(html,p,'front',days).filter(row=>row.publishedAt&&Date.parse(row.publishedAt)>=cutoff&&Date.parse(row.publishedAt)<=now&&row.url!==seed.url);
+  return Promise.all(rows.slice(0,40).map(async row=>({...row,id:await articleId(row.url),publisher:p.id,section:'front' as const,collectedAt:new Date().toISOString(),image:null})));
+ }catch{return [] as Article[];}
 }
 export async function collect(p:typeof publishers[number],section:Article['section']):Promise<{articles:Article[];status:SourceStatus}> {
  const now=new Date().toISOString();const status:SourceStatus={publisher:p.id,section,status:'ok',count:0,checkedAt:now,message:null};
@@ -37,7 +46,7 @@ export async function collect(p:typeof publishers[number],section:Article['secti
   const html=await response.text();if(html.length>8_000_000)throw Error('응답 크기 초과');
   const rows=extract(html,p,section), feedRows=section==='front'&&p.rss?await feed(p).catch(()=>[]):[];
   const merged=new Map([...feedRows,...rows].map(row=>[row.url,row]));if(!merged.size)throw Error('기사 링크를 찾지 못했습니다.');
-  const articles=await Promise.all([...merged.values()].slice(0,32).map(async row=>({ ...row,id:Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(row.url)))).map(x=>x.toString(16).padStart(2,'0')).join(''),publisher:p.id,section,publishedAt:'publishedAt' in row&&typeof row.publishedAt==='string'?row.publishedAt:null,collectedAt:now,image:null })));
+  const articles=await Promise.all([...merged.values()].slice(0,32).map(async row=>({ ...row,id:await articleId(row.url),publisher:p.id,section,publishedAt:'publishedAt' in row&&typeof row.publishedAt==='string'?row.publishedAt:null,collectedAt:now,image:null })));
   status.count=articles.length;return {articles,status};
  }catch(e){status.status='error';status.message=e instanceof Error?e.message:'수집 실패';return {articles:[],status};}
 }
@@ -50,6 +59,7 @@ async function feed(p:typeof publishers[number]):Promise<{title:string;url:strin
  return rows.slice(0,32);
 }
 const cleanFeed=(value:string)=>value.replace(/<!\[CDATA\[|\]\]>/g,'').replace(/<[^>]+>/g,' ').replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/\s+/g,' ').trim();
+const articleId=async(url:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(url)))).map(x=>x.toString(16).padStart(2,'0')).join('');
 const tokens=(s:string)=>new Set(s.replace(/\[[^\]]*\]/g,'').toLowerCase().match(/[가-힣a-z0-9]{2,}/g)||[]);
 export function keywordTopics(articles:Article[]):Topic[] {
  const groups:Article[][]=[];
@@ -66,12 +76,16 @@ export function validateTopics(topics:Topic[],articles:Article[]):Topic[] {
 const timelineStopWords=new Set(['단독','속보','종합','영상','포토','오늘','내일','관련','대한','통해','위해','기자','정부','국민','한국','서울','대통령','대표','위원장','밝혀','논란','뉴스']);
 const topicTokens=(title:string)=>[...tokens(title)].filter(token=>!timelineStopWords.has(token)&&!/^\d+$/.test(token));
 export function buildTimeline(articles:Article[]) {
- const groups:{articles:Article[];terms:Map<string,number>}[]=[];
- for(const article of articles.slice(0,1800)){const words=topicTokens(article.title);if(words.length<2)continue;let best:{group:typeof groups[number];score:number}|null=null;
-  for(const group of groups){const common=words.filter(word=>group.terms.has(word));const score=common.length/Math.max(2,Math.min(words.length,group.terms.size));if(common.length>=2&&score>=0.34&&(!best||score>best.score))best={group,score};}
-  if(best){best.group.articles.push(article);for(const word of words)best.group.terms.set(word,(best.group.terms.get(word)||0)+1);}else groups.push({articles:[article],terms:new Map(words.map(word=>[word,1]))});
- }
- return groups.map(group=>{const uniquePublishers=new Set(group.articles.map(article=>article.publisher));if(uniquePublishers.size<2)return null;const keywords=[...group.terms].sort((a,b)=>b[1]-a[1]||b[0].length-a[0].length).slice(0,3).map(([word])=>word);const points=group.articles.map(article=>({id:article.id,publisher:article.publisher,title:article.title,at:article.publishedAt||article.collectedAt})).filter(point=>!Number.isNaN(Date.parse(point.at))).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at)).slice(-80);
-  return {title:keywords.join(' · ')||group.articles[0].title,keywords,publisherCount:uniquePublishers.size,articleCount:group.articles.length,points};
- }).filter((topic):topic is NonNullable<typeof topic>=>!!topic).sort((a,b)=>b.publisherCount-a.publisherCount||b.articleCount-a.articleCount||Date.parse(b.points.at(-1)?.at||'')-Date.parse(a.points.at(-1)?.at||'')).slice(0,10);
+ const rows=articles.slice(0,3000), buckets=new Map<string,Article[]>();
+ for(const article of rows)for(const word of new Set(topicTokens(article.title)))buckets.set(word,[...(buckets.get(word)||[]),article]);
+ const candidates=[...buckets].map(([anchor,matches])=>{const publishers=new Set(matches.map(article=>article.publisher));if(publishers.size<2||matches.length<3)return null;
+  const coTerms=new Map<string,number>();for(const article of matches)for(const word of new Set(topicTokens(article.title)))if(word!==anchor)coTerms.set(word,(coTerms.get(word)||0)+1);
+  const keywords=[anchor,...[...coTerms].filter(([,count])=>count>=2).sort((a,b)=>b[1]-a[1]||b[0].length-a[0].length).slice(0,2).map(([word])=>word)];
+  const points=matches.map(article=>({id:article.id,publisher:article.publisher,title:article.title,at:article.publishedAt||article.collectedAt})).filter(point=>!Number.isNaN(Date.parse(point.at))).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at)).slice(-120);
+  const span=points.length?Math.max(0,Date.parse(points.at(-1)!.at)-Date.parse(points[0].at))/86400000:0;
+  return {title:keywords.join(' · '),keywords,publisherCount:publishers.size,articleCount:matches.length,points,ids:new Set(matches.map(article=>article.id)),score:publishers.size*20+Math.min(matches.length,30)+Math.min(span,90)/3};
+ }).filter((topic):topic is NonNullable<typeof topic>=>!!topic).sort((a,b)=>b.score-a.score);
+ const selected:typeof candidates=[];
+ for(const candidate of candidates){if(selected.some(existing=>{let overlap=0;for(const id of candidate.ids)if(existing.ids.has(id))overlap++;return overlap/Math.min(candidate.ids.size,existing.ids.size)>.62;}))continue;selected.push(candidate);if(selected.length===12)break;}
+ return selected.map(({ids,score,...topic})=>topic);
 }
