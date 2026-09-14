@@ -1,4 +1,4 @@
-import { api } from '@/lib/api';
-import { followup } from '@/lib/desk-service';
+import { api,body } from '@/lib/api';
+import { searchFollowup } from '@/lib/followup-search';
 export const dynamic='force-dynamic';
-export const GET=api((_userId,request)=>followup(Number(new URL(request.url).searchParams.get('days')||90)));
+export const POST=api(async(_userId,request)=>searchFollowup(await body(request)));

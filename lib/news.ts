@@ -29,15 +29,6 @@ export function extract(html:string,p:typeof publishers[number],section:Article[
  }
  return [...found.values()].slice(0,section==='front'?24:16);
 }
-export async function discoverHistory(p:typeof publishers[number],seed:Article|undefined,days=120) {
- if(!seed)return [] as Article[];
- try{
-  const response=await fetch(seed.url,{signal:AbortSignal.timeout(12000),headers:{'User-Agent':'Pressroom/1.0 (related headline indexer)','Accept':'text/html'}});if(!response.ok)return [];
-  const html=await response.text();if(html.length>8_000_000)return [];
-  const cutoff=Date.now()-days*86400000, now=Date.now()+86400000, rows=extract(html,p,'front',days).filter(row=>row.publishedAt&&Date.parse(row.publishedAt)>=cutoff&&Date.parse(row.publishedAt)<=now&&row.url!==seed.url);
-  return Promise.all(rows.slice(0,40).map(async row=>({...row,id:await articleId(row.url),publisher:p.id,section:'front' as const,collectedAt:new Date().toISOString(),image:null})));
- }catch{return [] as Article[];}
-}
 export async function collect(p:typeof publishers[number],section:Article['section']):Promise<{articles:Article[];status:SourceStatus}> {
  const now=new Date().toISOString();const status:SourceStatus={publisher:p.id,section,status:'ok',count:0,checkedAt:now,message:null};
  try {
