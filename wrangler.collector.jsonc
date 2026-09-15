@@ -4,7 +4,7 @@
   "main": "workers/news-collector.ts",
   "compatibility_date": "2026-09-14",
   "compatibility_flags": ["nodejs_compat"],
-  "triggers": { "crons": ["*/10 * * * *"] },
+  "triggers": { "crons": ["*/10 * * * *", "5,15,25,35,45,55 * * * *"] },
   "d1_databases": [
     {
       "binding": "DB",

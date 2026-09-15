@@ -52,6 +52,21 @@ export async function collect(p:typeof publishers[number],section:Article['secti
   status.count=articles.length;return {articles,status};
  }catch(e){status.status='error';status.message=e instanceof Error?e.message:'수집 실패';return {articles:[],status};}
 }
+export async function enrichArticleImages(articles:Article[],limit=8):Promise<number> {
+ const candidates=[...articles].filter(article=>article.section==='front'&&!article.image).sort((left,right)=>Date.parse(right.publishedAt||right.collectedAt)-Date.parse(left.publishedAt||left.collectedAt)).slice(0,limit);
+ const results=await Promise.all(candidates.map(async article=>{
+  try {
+   const publisher=publishers.find(item=>item.id===article.publisher);if(!publisher)return false;
+   canonical(article.url,publisher.home);
+   const response=await fetch(article.url,{redirect:'follow',signal:AbortSignal.timeout(12000),headers:{'User-Agent':'Pressroom/1.0 (article image metadata reader)','Accept':'text/html,application/xhtml+xml','Accept-Language':'ko-KR,ko;q=0.9,en;q=0.5'}});
+   if(!response.ok)return false;canonical(response.url,publisher.home);
+   const html=await response.text();if(html.length>8_000_000)return false;
+   const raw=imageMeta(html);
+   const image=safeImage(raw,response.url);if(!image)return false;article.image=image;return true;
+  } catch {return false;}
+ }));
+ return results.filter(Boolean).length;
+}
 async function feed(p:typeof publishers[number]):Promise<{title:string;url:string;publishedAt:string|null;image:string|null}[]> {
  const response=await fetch(p.rss,{signal:AbortSignal.timeout(10000),headers:{'User-Agent':'Pressroom/1.0 (RSS reader)','Accept':'application/rss+xml,application/xml,text/xml'}});if(!response.ok)throw Error(`RSS HTTP ${response.status}`);
  const root=parse(await response.text()), rows=[] as {title:string;url:string;publishedAt:string|null;image:string|null}[];
@@ -62,6 +77,14 @@ async function feed(p:typeof publishers[number]):Promise<{title:string;url:strin
 }
 const cleanFeed=(value:string)=>value.replace(/<!\[CDATA\[|\]\]>/g,'').replace(/<[^>]+>/g,' ').replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/\s+/g,' ').trim();
 const safeImage=(raw:string,base:string)=>{try{const url=new URL(cleanFeed(raw),base);return ['http:','https:'].includes(url.protocol)?url.href:null;}catch{return null;}};
+const tagAttribute=(tag:string,name:string)=>tag.match(new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`,'i'))?.slice(1).find(value=>value!==undefined)||'';
+const imageMeta=(html:string)=>{
+ for(const tag of html.slice(0,500_000).match(/<(?:meta|link)\b[^>]*>/gi)||[]){
+  const key=(tagAttribute(tag,'property')||tagAttribute(tag,'name')||tagAttribute(tag,'itemprop')||tagAttribute(tag,'rel')).toLowerCase();
+  if(['og:image','og:image:url','twitter:image','image','image_src'].includes(key)){const value=tagAttribute(tag,tag.toLowerCase().startsWith('<link')?'href':'content');if(value)return value;}
+ }
+ return '';
+};
 const srcsetUrl=(value:string|null)=>value?.split(',').map(candidate=>candidate.trim().split(/\s+/)[0]).find(Boolean)||'';
 const imageFrom=(anchor:ReturnType<typeof parse>,base:string)=>{
  const image=anchor.querySelector('img'),source=anchor.querySelector('source');

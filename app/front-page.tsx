@@ -64,8 +64,9 @@ export default function FrontPage({ articles, topics, savedIds, savingIds, onScr
     matches.sort((left, right) => Number(Boolean(right.image)) - Number(Boolean(left.image)) || timestamp(right) - timestamp(left));
     return matches.slice(0, 1);
   });
-  const ordered = [...new Map([...representatives, ...[...articles].sort((left, right) => timestamp(right) - timestamp(left))].map((article) => [article.id, article])).values()];
-  const lead = representatives[0] || ordered[0];
+  const prioritized = [...new Map([...representatives, ...[...articles].sort((left, right) => timestamp(right) - timestamp(left))].map((article) => [article.id, article])).values()];
+  const ordered = [...prioritized.filter((article) => article.image), ...prioritized.filter((article) => !article.image)];
+  const lead = representatives.find((article) => article.image) || ordered[0];
   const surrounding = ordered.filter((article) => article.id !== lead?.id).slice(0, 4);
   const more = ordered.filter((article) => article.id !== lead?.id && !surrounding.some((item) => item.id === article.id)).slice(0, 12);
   const story = (article: Article, size: 'lead' | 'side' | 'more') => <Story key={article.id} article={article} size={size} saved={savedIds.has(article.id)} saving={savingIds.includes(article.id)} onScrap={onScrap}/>;

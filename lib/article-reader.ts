@@ -42,7 +42,10 @@ export async function loadArticleContent(article: Article): Promise<ReaderConten
   if (cached) {
     const cacheAge = Date.now() - Date.parse(cached.fetchedAt);
     const cacheLimit = cached.status === "ok" ? SUCCESS_CACHE_MS : FAILURE_CACHE_MS;
-    if (cacheAge < cacheLimit) return fromCache(cached);
+    if (cacheAge < cacheLimit) {
+      if (!article.image && cached.image) await saveArticleImage(article.id, cached.image);
+      return fromCache(cached);
+    }
   }
 
   let content: ReaderContent;
@@ -72,7 +75,13 @@ export async function loadArticleContent(article: Article): Promise<ReaderConten
     )
     .run();
 
+  if (!article.image && content.image) await saveArticleImage(article.id, content.image);
+
   return { ...content, available: status === "ok" };
+}
+
+async function saveArticleImage(articleId: string, image: string) {
+  await database().prepare("UPDATE articles SET image=? WHERE id=? AND (image IS NULL OR image='')").bind(image, articleId).run();
 }
 
 async function fetchArticleContent(article: Article): Promise<ReaderContent> {
