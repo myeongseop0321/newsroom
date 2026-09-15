@@ -52,9 +52,22 @@ async function feed(p:typeof publishers[number]):Promise<{title:string;url:strin
 const cleanFeed=(value:string)=>value.replace(/<!\[CDATA\[|\]\]>/g,'').replace(/<[^>]+>/g,' ').replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/\s+/g,' ').trim();
 const articleId=async(url:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(url)))).map(x=>x.toString(16).padStart(2,'0')).join('');
 const tokens=(s:string)=>new Set(s.replace(/\[[^\]]*\]/g,'').toLowerCase().match(/[가-힣a-z0-9]{2,}/g)||[]);
+const rankingStopWords=new Set(['속보','단독','종합','영상','포토','오늘','뉴스','관련','대한','통해','위해','정부','대통령','대표','위원장','기자','언론사','공식','발표','밝혀','논란']);
+const rankingTokens=(title:string)=>new Set([...tokens(title)].filter(token=>!rankingStopWords.has(token)&&!/^\d+$/.test(token)));
+const similarity=(left:Set<string>,right:Set<string>)=>{
+ const shared=[...left].filter(token=>right.has(token)).length;
+ const smaller=Math.min(left.size,right.size);
+ if(!smaller||shared<2)return 0;
+ const containment=shared/smaller,jaccard=shared/(left.size+right.size-shared);
+ return shared>=3&&containment>=.5?containment+jaccard:shared>=2&&containment>=.67&&jaccard>=.34?containment+jaccard:0;
+};
 export function keywordTopics(articles:Article[]):Topic[] {
  const groups:Article[][]=[];
- for(const article of articles){const a=tokens(article.title);const group=groups.find(g=>{const b=tokens(g[0].title);const shared=[...a].filter(t=>b.has(t)).length;return shared>=3&&shared/Math.max(a.size,b.size)>=0.45;});if(group)group.push(article);else groups.push([article]);}
+ for(const article of [...articles].sort((a,b)=>Date.parse(b.collectedAt)-Date.parse(a.collectedAt))){
+  const articleTokens=rankingTokens(article.title);
+  const best=groups.map((group,index)=>({index,score:Math.max(...group.map(candidate=>similarity(articleTokens,rankingTokens(candidate.title))))})).sort((a,b)=>b.score-a.score)[0];
+  if(best?.score>0)groups[best.index].push(article);else groups.push([article]);
+ }
  return validateTopics(groups.map(g=>({title:g[0].title,summary:'제목 유사도로 묶은 관련 보도입니다. 원문에서 맥락을 확인하세요.',articleIds:g.map(a=>a.id),publisherCount:0})),articles);
 }
 export function validateTopics(topics:Topic[],articles:Article[]):Topic[] {
@@ -78,5 +91,5 @@ export function buildTimeline(articles:Article[]) {
  }).filter((topic):topic is NonNullable<typeof topic>=>!!topic).sort((a,b)=>b.score-a.score);
  const selected:typeof candidates=[];
  for(const candidate of candidates){if(selected.some(existing=>{let overlap=0;for(const id of candidate.ids)if(existing.ids.has(id))overlap++;return overlap/Math.min(candidate.ids.size,existing.ids.size)>.62;}))continue;selected.push(candidate);if(selected.length===12)break;}
- return selected.map(({ids,score,...topic})=>topic);
+ return selected.map(topic=>({title:topic.title,keywords:topic.keywords,publisherCount:topic.publisherCount,articleCount:topic.articleCount,points:topic.points}));
 }

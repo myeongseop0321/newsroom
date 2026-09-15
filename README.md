@@ -1,6 +1,6 @@
 # PRESSROOM
 
-프로젝트 실행, 구현 기능, GPT 연결 상태와 검증 방법은 [PROJECT.md](PROJECT.md)를 참고하세요. 아래는 기반 런타임 참고 문서입니다.
+프로젝트 실행, 구현 기능, 저장형 뉴스 검색과 검증 방법은 [PROJECT.md](PROJECT.md)를 참고하세요. 아래는 기반 런타임 참고 문서입니다.
 
 A clean full-stack starter running on [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and Drizzle support.
 

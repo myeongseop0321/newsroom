@@ -1,8 +1,9 @@
 declare namespace Cloudflare {
   interface Env {
     DB?: D1Database;
-    OPENAI_API_KEY?: string;
-    OPENAI_MODEL?: string;
+    ELASTICSEARCH_URL?: string;
+    ELASTICSEARCH_API_KEY?: string;
+    ELASTICSEARCH_INDEX?: string;
     BUCKET?: R2Bucket;
   }
 }
