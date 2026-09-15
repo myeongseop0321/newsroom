@@ -16,7 +16,8 @@ const safeImage = (value: string | null) => {
   if (!value) return null;
   try {
     const url = new URL(value);
-    return ['http:', 'https:'].includes(url.protocol) ? url.href : null;
+    if (!['http:', 'https:'].includes(url.protocol) || (url.pathname === '/' && !url.search)) return null;
+    return url.href;
   } catch {
     return null;
   }
@@ -41,7 +42,7 @@ function Story({ article, size, saved, saving, onScrap }: {
           src={image}
           alt=""
           referrerPolicy="no-referrer"
-          loading={size === 'lead' ? 'eager' : 'lazy'}
+          loading="eager"
           onError={(event) => { event.currentTarget.style.display = 'none'; }}
         />}
       </div>
@@ -61,12 +62,12 @@ export default function FrontPage({ articles, topics, savedIds, savingIds, onScr
   const byId = new Map(articles.map((article) => [article.id, article]));
   const representatives = topics.flatMap((topic) => {
     const matches = topic.articleIds.map((id) => byId.get(id)).filter((article): article is Article => Boolean(article));
-    matches.sort((left, right) => Number(Boolean(right.image)) - Number(Boolean(left.image)) || timestamp(right) - timestamp(left));
+    matches.sort((left, right) => Number(Boolean(safeImage(right.image))) - Number(Boolean(safeImage(left.image))) || timestamp(right) - timestamp(left));
     return matches.slice(0, 1);
   });
   const prioritized = [...new Map([...representatives, ...[...articles].sort((left, right) => timestamp(right) - timestamp(left))].map((article) => [article.id, article])).values()];
-  const ordered = [...prioritized.filter((article) => article.image), ...prioritized.filter((article) => !article.image)];
-  const lead = representatives.find((article) => article.image) || ordered[0];
+  const ordered = [...prioritized.filter((article) => safeImage(article.image)), ...prioritized.filter((article) => !safeImage(article.image))];
+  const lead = representatives.find((article) => safeImage(article.image)) || ordered[0];
   const surrounding = ordered.filter((article) => article.id !== lead?.id).slice(0, 4);
   const more = ordered.filter((article) => article.id !== lead?.id && !surrounding.some((item) => item.id === article.id)).slice(0, 12);
   const story = (article: Article, size: 'lead' | 'side' | 'more') => <Story key={article.id} article={article} size={size} saved={savedIds.has(article.id)} saving={savingIds.includes(article.id)} onScrap={onScrap}/>;

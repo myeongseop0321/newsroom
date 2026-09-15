@@ -76,7 +76,7 @@ async function feed(p:typeof publishers[number]):Promise<{title:string;url:strin
  return rows.slice(0,32);
 }
 const cleanFeed=(value:string)=>value.replace(/<!\[CDATA\[|\]\]>/g,'').replace(/<[^>]+>/g,' ').replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/\s+/g,' ').trim();
-const safeImage=(raw:string,base:string)=>{try{const url=new URL(cleanFeed(raw),base);return ['http:','https:'].includes(url.protocol)?url.href:null;}catch{return null;}};
+const safeImage=(raw:string,base:string)=>{try{const value=cleanFeed(raw).trim();if(!value||value==='/'||value==='#')return null;const url=new URL(value,base);if(!['http:','https:'].includes(url.protocol)||(url.pathname==='/'&&!url.search))return null;if(/(?:blank|spacer|transparent|no[-_]?image|placeholder)\.(?:gif|png|jpe?g|webp)$/i.test(url.pathname))return null;return url.href;}catch{return null;}};
 const tagAttribute=(tag:string,name:string)=>tag.match(new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`,'i'))?.slice(1).find(value=>value!==undefined)||'';
 const imageMeta=(html:string)=>{
  for(const tag of html.slice(0,500_000).match(/<(?:meta|link)\b[^>]*>/gi)||[]){
