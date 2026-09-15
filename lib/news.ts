@@ -13,7 +13,7 @@ export function canonical(raw:string,base:string) {
  return u.href;
 }
 export function extract(html:string,p:typeof publishers[number],section:Article['section'],maxAgeDays=4) {
- const found=new Map<string,{title:string;url:string;publishedAt:string|null}>();
+ const found=new Map<string,{title:string;url:string;publishedAt:string|null;image:string|null}>();
  const root=parse(html);root.querySelectorAll('script,style,header,footer,nav').forEach(el=>el.remove());
  for(const anchor of root.querySelectorAll('a[href]')) {
   const href=anchor.getAttribute('href');if(!href)continue;
@@ -24,7 +24,10 @@ export function extract(html:string,p:typeof publishers[number],section:Article[
    if(section==='opinion'&&['chosun','hani','seoul','mk'].includes(p.id)&&!/(opinion|editorial|editOpinion|column)/i.test(url))continue;
    const date=url.match(/(20\d{2})[\/.\-](\d{2})[\/.\-](\d{2})/)||url.match(/(20\d{2})(\d{2})(\d{2})\d{4,}/),publishedAt=date?new Date(`${date[1]}-${date[2]}-${date[3]}T00:00:00+09:00`).toISOString():null;
    if(publishedAt){const age=Date.now()-Date.parse(publishedAt);if(age>maxAgeDays*86400000||age< -86400000)continue;}
-   if(!found.has(url))found.set(url,{title,url,publishedAt});
+   const imageNode=anchor.querySelector('img'),sourceNode=anchor.querySelector('source');
+   const rawImage=imageNode?.getAttribute('src')||imageNode?.getAttribute('data-src')||imageNode?.getAttribute('data-original')||sourceNode?.getAttribute('srcset')?.split(',')[0]?.trim().split(/\s+/)[0]||imageNode?.getAttribute('srcset')?.split(',')[0]?.trim().split(/\s+/)[0]||'';
+   const image=safeImage(rawImage,p.home);
+   if(!found.has(url))found.set(url,{title,url,publishedAt,image});
   } catch {continue;}
  }
  return [...found.values()].slice(0,section==='front'?24:16);
@@ -41,15 +44,16 @@ export async function collect(p:typeof publishers[number],section:Article['secti
   status.count=articles.length;return {articles,status};
  }catch(e){status.status='error';status.message=e instanceof Error?e.message:'수집 실패';return {articles:[],status};}
 }
-async function feed(p:typeof publishers[number]):Promise<{title:string;url:string;publishedAt:string|null}[]> {
+async function feed(p:typeof publishers[number]):Promise<{title:string;url:string;publishedAt:string|null;image:string|null}[]> {
  const response=await fetch(p.rss,{signal:AbortSignal.timeout(10000),headers:{'User-Agent':'Pressroom/1.0 (RSS reader)','Accept':'application/rss+xml,application/xml,text/xml'}});if(!response.ok)throw Error(`RSS HTTP ${response.status}`);
- const root=parse(await response.text()), rows=[] as {title:string;url:string;publishedAt:string|null}[];
+ const root=parse(await response.text()), rows=[] as {title:string;url:string;publishedAt:string|null;image:string|null}[];
  for(const item of root.querySelectorAll('item,entry')){const title=cleanFeed(item.querySelector('title')?.textContent||'');const raw=item.querySelector('link')?.getAttribute('href')||item.querySelector('link')?.textContent||'';if(title.length<12||!raw)continue;
-  try{const url=canonical(cleanFeed(raw),p.home),u=new URL(url);if(!new RegExp(p.articlePattern,'i').test(u.pathname+u.search))continue;const rawDate=cleanFeed(item.querySelector('pubDate,published,updated,dc\\:date')?.textContent||'');const parsed=Date.parse(rawDate);rows.push({title,url,publishedAt:Number.isNaN(parsed)?null:new Date(parsed).toISOString()});}catch{continue;}
+  try{const url=canonical(cleanFeed(raw),p.home),u=new URL(url);if(!new RegExp(p.articlePattern,'i').test(u.pathname+u.search))continue;const rawDate=cleanFeed(item.querySelector('pubDate,published,updated,dc\\:date')?.textContent||'');const parsed=Date.parse(rawDate);const media=item.querySelector('media\\:content,media\\:thumbnail,enclosure');rows.push({title,url,publishedAt:Number.isNaN(parsed)?null:new Date(parsed).toISOString(),image:safeImage(media?.getAttribute('url')||'',p.home)});}catch{continue;}
  }
  return rows.slice(0,32);
 }
 const cleanFeed=(value:string)=>value.replace(/<!\[CDATA\[|\]\]>/g,'').replace(/<[^>]+>/g,' ').replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/\s+/g,' ').trim();
+const safeImage=(raw:string,base:string)=>{try{const url=new URL(cleanFeed(raw),base);return ['http:','https:'].includes(url.protocol)?url.href:null;}catch{return null;}};
 const articleId=async(url:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(url)))).map(x=>x.toString(16).padStart(2,'0')).join('');
 const tokens=(s:string)=>new Set(s.replace(/\[[^\]]*\]/g,'').toLowerCase().match(/[가-힣a-z0-9]{2,}/g)||[]);
 const rankingStopWords=new Set(['속보','단독','종합','영상','포토','오늘','뉴스','관련','대한','통해','위해','정부','대통령','대표','위원장','기자','언론사','공식','발표','밝혀','논란']);
