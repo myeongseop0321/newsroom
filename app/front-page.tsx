@@ -33,8 +33,17 @@ function Story({ article, size, saved, saving, onScrap }: {
   const image = safeImage(article.image);
   return <article className={`front-story front-story-${size}`}>
     <a href={`/article/${article.id}`} className="front-story-link">
-      <div className={`front-photo ${image ? 'has-image' : ''}`} style={image ? { backgroundImage: `url("${image.replace(/"/g, '%22')}")` } : undefined}>
-        {!image && <span>{publisher?.short || 'NEWS'}</span>}
+      <div className={`front-photo ${image ? 'has-image' : ''}`}>
+        <span>{publisher?.short || 'NEWS'}</span>
+        {/* External publisher images need referrerPolicy, which the framework image wrapper does not preserve here. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {image && <img
+          src={image}
+          alt=""
+          referrerPolicy="no-referrer"
+          loading={size === 'lead' ? 'eager' : 'lazy'}
+          onError={(event) => { event.currentTarget.style.display = 'none'; }}
+        />}
       </div>
       <div className="front-source"><i style={{ background: publisher?.color }}/>{publisher?.name || article.publisher}</div>
       <h3>{article.title}</h3>
