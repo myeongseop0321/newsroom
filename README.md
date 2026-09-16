@@ -1,128 +1,152 @@
 # PRESSROOM
 
-프로젝트 실행, 구현 기능, 저장형 뉴스 검색과 검증 방법은 [PROJECT.md](PROJECT.md)를 참고하세요. 아래는 기반 런타임 참고 문서입니다.
+국내 언론사의 온라인 1면, 사설·오피니언, 이슈 랭킹, 이슈 팔로우업을 한곳에서 보는 개인 뉴스 데스크입니다. 로그인한 사용자는 보고 싶은 언론사를 선택하고, 기사를 읽고, 다시 볼 기사를 스크랩할 수 있습니다.
 
-A clean full-stack starter running on [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and Drizzle support.
+![PRESSROOM 뉴스 데스크 예시](docs/images/pressroom-overview.svg)
 
-## Prerequisites
+## 주요 기능
 
-- Node.js `>=22.13.0`
-- Portable: Windows, macOS, or Linux; no Bash required
-- Managed Linux: managed Linux runtime with Bash, `flock`, `curl`, `sha256sum`, and GNU `timeout`
-- Git is required only for publishing
+- **개인화된 뉴스 데스크**: 로그인한 사용자별로 선택 언론사와 스크랩을 저장합니다.
+- **온라인 1면 구성**: CNN형 신문 편집면처럼 큰 대표 기사와 작은 주요 기사를 함께 보여줍니다.
+- **10분 속보 롤러**: 최근 10분 안에 새로 확인된 기사를 상단 티커에서 순환 표시합니다.
+- **이슈 랭킹**: GPT 없이 제목 유사도와 공통 보도 언론사 수를 기준으로 오늘의 주요 이슈를 묶습니다.
+- **이슈 팔로우업**: 저장된 기사 DB를 검색해 한 주제의 보도 흐름을 타임라인으로 보여줍니다.
+- **내 홈페이지 기사 읽기**: 외부 링크로 바로 보내지 않고, PRESSROOM 안에서 기사 요약형 읽기 화면을 엽니다.
+- **기사 스크랩**: 관심 기사를 내 스크랩 탭에 저장하고 다시 볼 수 있습니다.
 
-## Sites Lifecycle
+## 사용 예시
 
-The Sites initializer copies the shared starter and selects managed-linux only when `SITES_MANAGED_LINUX_CONTAINER=1`; otherwise it selects portable. It saves the selection only in ignored `.sites-runtime/execution-profile.json`. Both profiles copy/configure first, then use the plugin's separate `install-dependencies.mjs` step to measure installation independently. Edit source under `app/` and follow the Sites skill for installation, preview, builds, and publishing.
+![PRESSROOM 사용 흐름](docs/images/pressroom-usage-flow.svg)
 
-Whenever reopening or moving a checkout, run `node <plugin-root>/scripts/configure-execution-profile.mjs` before project commands. Profile changes do not alter tracked source or require reinstalling otherwise-valid dependencies; restart an existing preview to use the new selection. Do not commit or upload `.sites-runtime/`.
+1. **로그인하기**
 
-This starter does not use `wrangler.jsonc`.
+   로그인해야 언론사 설정, 스크랩, 개인화된 데스크가 저장됩니다.
 
-`install:ci` runs `npm ci` once against the shared lockfile, disables parent-workspace discovery, and includes required dev/optional dependencies despite production/omit settings. Sharp defaults to prebuilt binaries unless explicitly configured otherwise. Do not overlap installers.
+2. **언론사 선택하기**
 
-- **Portable:** Preserve host HOME, npm cache, registry, proxy, temporary paths, retry/concurrency settings, and lifecycle-script policy. Use `--prefer-offline --no-audit --no-fund`.
-- **Managed Linux:** Use the existing project-local HOME/cache/tmp setup and Linux install lock, tarball preflight, and timeout. Restore the image-seeded npm cache only when its lockfile hash matches; retain network fallback. Builds keep their existing timeout. These helpers are not invoked by the portable profile.
+   언론사 설정 탭에서 보고 싶은 언론사를 고릅니다. 아무 언론사도 선택하지 않으면 뉴스 영역은 비어 있습니다.
 
-`scripts/sites-env.mjs` preserves the caller's HOME, npm cache, proxy, XDG, and temporary-directory configuration while defaulting Wrangler and Miniflare state to the checkout. If npm reports an unwritable cache, select a writable path with `npm_config_cache` for that install. The `dev` and `start` scripts also keep Wrangler logs inside the checkout. Generated `.sites-runtime/` and `.wrangler/` directories are disposable and ignored by Git.
+3. **오늘의 뉴스 보기**
 
-On portable, `npm run dev` uses `vinext dev` with HMR, starting at port 5173. Vinext records the running server in ignored `.vinext/` state, rejects an ordinary duplicate launch, and recovers stale state after a stopped process; exactly simultaneous starts can race. Pass `--port <port>` or `--hostname <host>` after `npm run dev --` when needed; keep portable previews on loopback.
+   선택한 언론사의 온라인 1면 기사를 신문 편집면처럼 확인합니다. 같은 이슈를 여러 언론사가 다뤄도 화면에는 대표 기사 중심으로 정리됩니다.
 
-On managed Linux, use `sites-preview start` only for requested browser QA. The project's dev script runs Vite and accepts the supervisor's `--host 0.0.0.0 --port 4173 --strictPort` arguments. The internal browser uses `http://terminal.local:4173/`; it is not a user-facing URL. The supervisor owns the preview lifecycle. The ignored local profile survives the supervisor's cleared process environment.
+4. **이슈 랭킹 확인하기**
 
-The portable profile simulates ChatGPT sign-in only for loopback development requests. Visit `/signin-with-chatgpt?return_to=/` to sign in as `local_seedy` (`seedy@sites.test`, display name `Seedy`) and `/signout-with-chatgpt?return_to=/` to sign out. The development cookie preserves that identity across server restarts. Mock auth is disabled in the managed-linux profile and is not included in production builds; hosted authentication remains dispatch-owned.
+   여러 언론사가 함께 다룬 주제를 순위로 봅니다. 순위는 조회수가 아니라 저장된 기사 제목의 유사도와 언론사 수를 기준으로 계산합니다.
 
-The Worker uses `vinext/server/fetch-handler`, including Vinext's config-aware image handling. After building, `npm start` runs that Worker locally through Wrangler on `127.0.0.1`, sharing `.wrangler/state` with dev preview and local D1 migrations; it does not deploy the site or simulate sign-in. Use the URL printed by the server. Pass `npm start -- --port <port>` to select a different built-preview port.
+5. **이슈 팔로우업 검색하기**
 
-Local previews use Miniflare's placeholder `Request.cf` metadata without a network lookup. Set `CLOUDFLARE_CF_FETCH_ENABLED=true` to opt into fetching preview metadata; this setting does not change hosted request metadata.
+   검색어와 기간을 선택하면 저장된 기사 DB에서 관련 기사를 찾아 날짜별 타임라인으로 보여줍니다.
 
-Local tool usage metrics are disabled by default. Set `WRANGLER_SEND_METRICS=true` to opt in.
+6. **스크랩하기**
 
-## Included Shape
+   다시 읽고 싶은 기사는 북마크 버튼으로 저장합니다.
 
-- edit site code under `app/`
-- `app/chatgpt-auth.ts` provides optional dispatch-owned ChatGPT sign-in helpers
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/index.ts` reads the D1 binding from the Cloudflare Worker environment
-- `db/schema.ts` starts intentionally empty
-- `@cloudflare/workers-types` provides Worker types; `cloudflare-env.d.ts` declares optional `DB`/`BUCKET` bindings—update these declarations if binding names change
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
+## 이슈 팔로우업
 
-## Workspace Auth Headers
+![이슈 팔로우업 타임라인 예시](docs/images/pressroom-followup.svg)
 
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
+이슈 팔로우업은 웹을 매번 다시 검색하지 않습니다. Cloudflare D1에 누적된 기사 데이터를 먼저 검색하고, Elasticsearch 연결 정보가 있으면 Elasticsearch를 우선 사용합니다. 그래서 같은 검색어에 대해 더 일관된 결과를 얻을 수 있습니다.
 
-The user ID is stable for the same user on the same Site and different across Sites. Use it as the durable user key; use email and name for display or contact purposes.
+타임라인의 점은 기사 한 건을 뜻합니다. 점 위에 보이는 말풍선에는 날짜, 언론사, 기사 제목이 표시되어 한 이슈가 어떤 순서로 보도됐는지 빠르게 볼 수 있습니다.
 
-SIWC-authenticated workspace sites may also receive `oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty `name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by `oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
+## 지원 언론사
 
-Treat the full name as optional and fall back to email when it is absent:
+현재 13개 언론사를 지원합니다.
 
-```tsx
-import { headers } from "next/headers";
+| 구분 | 언론사 |
+| --- | --- |
+| 종합지 | 동아일보, 조선일보, 한겨레, 경향신문, 서울신문, 세계일보, 중앙일보, 한국일보, 국민일보, 문화일보 |
+| 경제지 | 한국경제, 매일경제 |
+| 통신사 | 연합뉴스 |
 
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
+언론사 페이지 구조가 바뀌면 수집 결과가 달라질 수 있습니다. 수집 상태는 앱 안의 언론사 수집 상태 영역에서 확인할 수 있습니다.
 
-  const displayName = fullName ?? email;
-  // ...
-}
+## 동작 방식
+
+```mermaid
+flowchart LR
+  A[Cloudflare Cron] --> B[뉴스 수집 Worker]
+  B --> C[(Cloudflare D1)]
+  C --> D[오늘의 뉴스]
+  C --> E[이슈 랭킹]
+  C --> F[이슈 팔로우업 검색]
+  G[사용자 로그인] --> H[언론사 설정]
+  H --> D
+  D --> I[기사 스크랩]
+  I --> C
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+- 기사 수집은 10분 간격 Cron Worker와 사용자의 새로고침으로 실행합니다.
+- `articles` 테이블은 기사 원본 저장소입니다.
+- `articles_fts`는 D1 FTS5 기반 제목 검색에 사용합니다.
+- `scraps`는 사용자별 저장 기사를 관리합니다.
+- `settings`는 사용자별 선택 언론사와 설정값을 저장합니다.
+- `sources`는 언론사·섹션별 수집 상태를 저장합니다.
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs optional or required ChatGPT sign-in:
+## GPT 사용 여부
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use the returned `userId` as the stable user key for user-owned records; do not use email as a durable identifier.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send anonymous visitors through Sign in with ChatGPT.
-- In a Server Component, start sign-in with `<a href={chatGPTSignInPath(returnTo)} target="_top">`. The auth helper module is server-only; do not import it into a Client Component.
-- Do not use `fetch`, XHR, a client-side router, or a framework link that can prefetch the sign-in route. SIWC must start as a top-level navigation.
-- Never request the AuthAPI authorization endpoint directly. The dispatch-owned `/signin-with-chatgpt` route must start the SIWC flow.
-- Use `chatGPTSignOutPath(returnTo)` for browser sign-out links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because they depend on per-request identity headers.
+현재 핵심 뉴스 분류와 검색 흐름은 GPT 없이 동작하도록 구성되어 있습니다.
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the OAuth cookies, and identity header injection. Do not implement app routes for those reserved paths. Routes that do not import and call the helper remain anonymous-compatible.
+| 기능 | GPT 사용 | 기준 |
+| --- | --- | --- |
+| 오늘의 뉴스 정렬 | 사용 안 함 | 저장된 기사 제목의 핵심어와 유사도 |
+| 이슈 랭킹 | 사용 안 함 | 공통 보도 언론사 수와 최신성 |
+| 이슈 팔로우업 | 사용 안 함 | D1 FTS5 또는 Elasticsearch 검색 |
+| 기사 수집 | 사용 안 함 | 언론사 페이지/RSS 메타데이터 |
 
-SIWC establishes identity only; it does not prove workspace membership. Use the Sites hosting platform's access policy controls for workspace-wide restrictions, or enforce explicit server-side membership or allowlist checks.
+## 로컬 실행
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Local D1 migrations
-
-For a D1-backed local preview, generate SQL with `npm run db:generate`. Build once through the Sites skill's build entrypoint (or `npm run build` for standalone use) to generate `dist/server/wrangler.json`, rebuilding if bindings change. From the project root, apply each pending migration in order:
+Node.js 22.13 이상이 필요합니다.
 
 ```sh
-node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_example.sql
+npm ci
+npm run db:local
+npm run dev
 ```
 
-Replace the filename with the pending migration and `DB` with your D1 binding name if different. Use `.wrangler/state`, not `.wrangler/state/v3`; Wrangler adds the versioned directories. Do not replay migrations already applied locally. This updates only the preview database; publishing applies production migrations separately.
+개발 서버는 기본적으로 `http://localhost:5173`에서 실행됩니다. 로컬 개발에서는 `/signin-with-chatgpt?return_to=/`로 테스트 로그인을 사용할 수 있습니다.
 
-## Diagnostic Commands
+## 검증
 
-- `npm run install:ci`: perform the one locked dependency install
-- `npm run dev`: start the Vite/Vinext development server
-- `npm run build`: build the deployable Sites artifact
-- `npm run start`: preview the built Worker locally with D1/R2 support
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+```sh
+npm run typecheck
+npm run lint
+npm run check:news
+npm run check:api
+npm run build
+```
 
-When using the Sites plugin, follow its skill instructions for installation, builds, and publishing. These npm commands remain available for standalone use.
+`check:api`는 실행 중인 로컬 서버와 테스트 계정을 사용합니다. 테스트 중 생성한 스크랩은 정리하고 기존 스크랩은 보존합니다.
 
-The portable build runs Vinext directly without a host `timeout` command. The managed-linux build uses `scripts/build-verified.sh` and its existing `SITES_BUILD_TIMEOUT` setting.
+## Cloudflare 배포
 
-## Learn More
+이 프로젝트는 Cloudflare Workers와 D1을 사용합니다.
 
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+```sh
+npm run build
+npm run deploy:cloudflare
+npm run deploy:collector
+```
+
+D1 마이그레이션은 다음 명령으로 적용합니다.
+
+```sh
+npm run db:cloudflare
+```
+
+Elasticsearch를 연결하려면 사이트 Worker와 수집 Worker에 다음 secret을 설정합니다.
+
+```sh
+ELASTICSEARCH_URL
+ELASTICSEARCH_API_KEY
+ELASTICSEARCH_INDEX
+```
+
+`ELASTICSEARCH_INDEX`를 생략하면 기본값은 `pressroom-articles`입니다. Elasticsearch가 없어도 D1 FTS5 검색은 계속 작동합니다.
+
+## 참고
+
+- 자세한 구현 메모와 운영 제한은 [PROJECT.md](PROJECT.md)에 정리되어 있습니다.
+- 온라인 1면은 각 언론사 홈페이지의 주요 기사 링크를 뜻합니다. 종이신문 PDF나 기사 전문 복제본을 제공하지 않습니다.
+- 기사 원문 저작권과 언론사 이용 조건을 준수해야 합니다.

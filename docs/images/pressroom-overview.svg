@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" role="img" aria-labelledby="title desc">
+  <title id="title">PRESSROOM 뉴스 데스크 예시</title>
+  <desc id="desc">오늘의 뉴스 화면, 속보 티커, 주요 기사 카드, 이슈 랭킹을 보여주는 README용 예시 이미지</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f6f8fb"/>
+      <stop offset="1" stop-color="#e8edf5"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#182235" flood-opacity=".14"/>
+    </filter>
+  </defs>
+  <rect width="1280" height="760" fill="url(#bg)"/>
+  <rect x="80" y="58" width="1120" height="644" rx="28" fill="#ffffff" filter="url(#shadow)"/>
+  <rect x="80" y="58" width="1120" height="74" rx="28" fill="#ffffff"/>
+  <text x="122" y="104" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="30" font-weight="800" fill="#111827">PRESS</text>
+  <text x="224" y="104" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="30" font-weight="800" fill="#3182f6">ROOM</text>
+  <circle cx="329" cy="94" r="5" fill="#e11d48"/>
+  <text x="375" y="100" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="16" fill="#6b7280">뉴스를 한눈에</text>
+  <rect x="806" y="78" width="112" height="34" rx="17" fill="#f2f4f6"/>
+  <text x="834" y="101" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="14" font-weight="700" fill="#374151">오늘의 뉴스</text>
+  <rect x="934" y="78" width="96" height="34" rx="17" fill="#ffffff" stroke="#d7dde6"/>
+  <text x="959" y="101" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="14" fill="#4b5563">랭킹</text>
+  <rect x="1044" y="78" width="112" height="34" rx="17" fill="#ffffff" stroke="#d7dde6"/>
+  <text x="1070" y="101" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="14" fill="#4b5563">스크랩</text>
+  <rect x="104" y="154" width="1072" height="44" rx="22" fill="#fff4f4" stroke="#ffd7d7"/>
+  <circle cx="136" cy="176" r="7" fill="#ef4444">
+    <animate attributeName="opacity" values="1;.25;1" dur="1.1s" repeatCount="indefinite"/>
+  </circle>
+  <text x="154" y="182" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="15" font-weight="800" fill="#b91c1c">10분 속보</text>
+  <text x="250" y="182" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="15" fill="#111827">새로 확인된 주요 뉴스가 5초마다 바뀝니다</text>
+  <text x="1052" y="182" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="13" fill="#7f1d1d">3 / 12</text>
+  <text x="104" y="250" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="46" font-weight="850" fill="#111827">오늘의 뉴스</text>
+  <text x="104" y="282" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="17" fill="#6b7280">대표 기사와 주요 소식을 신문 편집면처럼 살펴봅니다.</text>
+  <rect x="104" y="318" width="242" height="286" rx="10" fill="#f8fafc" stroke="#e5e7eb"/>
+  <rect x="124" y="338" width="202" height="128" rx="8" fill="#dbeafe"/>
+  <circle cx="157" cy="371" r="17" fill="#60a5fa"/>
+  <rect x="124" y="490" width="120" height="16" rx="8" fill="#2563eb"/>
+  <text x="124" y="532" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="22" font-weight="800" fill="#111827">좌측 주요 기사</text>
+  <text x="124" y="562" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="14" fill="#6b7280">작은 사진 + 제목</text>
+  <rect x="374" y="300" width="390" height="350" rx="12" fill="#f8fafc" stroke="#d7dde6"/>
+  <rect x="398" y="324" width="342" height="194" rx="10" fill="#d1fae5"/>
+  <circle cx="450" cy="376" r="24" fill="#34d399"/>
+  <path d="M398 501 L506 420 L590 484 L650 438 L740 501 Z" fill="#10b981" opacity=".55"/>
+  <rect x="398" y="546" width="136" height="18" rx="9" fill="#059669"/>
+  <text x="398" y="592" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="30" font-weight="850" fill="#111827">메인 기사</text>
+  <text x="398" y="624" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="15" fill="#6b7280">가장 눈에 띄는 대표 뉴스</text>
+  <rect x="792" y="318" width="188" height="286" rx="10" fill="#f8fafc" stroke="#e5e7eb"/>
+  <rect x="812" y="338" width="148" height="92" rx="8" fill="#fee2e2"/>
+  <rect x="812" y="460" width="90" height="14" rx="7" fill="#ef4444"/>
+  <text x="812" y="502" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="19" font-weight="800" fill="#111827">우측 기사</text>
+  <text x="812" y="530" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="14" fill="#6b7280">작은 사진 + 제목</text>
+  <rect x="1006" y="300" width="150" height="350" rx="16" fill="#111827"/>
+  <text x="1028" y="340" font-family="Arial, 'Noto Sans KR', sans-serif" font-size="17" font-weight="800" fill="#ffffff">이슈 랭킹</text>
+  <g font-family="Arial, 'Noto Sans KR', sans-serif" font-size="13" fill="#d1d5db">
+    <circle cx="1032" cy="382" r="13" fill="#3182f6"/><text x="1028" y="387" font-weight="800" fill="#ffffff">1</text><text x="1054" y="387">공통 보도</text>
+    <circle cx="1032" cy="430" r="13" fill="#4b5563"/><text x="1028" y="435" font-weight="800" fill="#ffffff">2</text><text x="1054" y="435">경제 이슈</text>
+    <circle cx="1032" cy="478" r="13" fill="#4b5563"/><text x="1028" y="483" font-weight="800" fill="#ffffff">3</text><text x="1054" y="483">정치 현안</text>
+  </g>
+</svg>
