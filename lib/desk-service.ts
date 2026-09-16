@@ -12,7 +12,8 @@ export async function desk(userId:string):Promise<DeskState>{
  const saved=await db.prepare(`SELECT ${columns} FROM scraps s JOIN articles a ON a.id=s.article_id WHERE s.user_id=? ORDER BY s.created_at DESC`).bind(userId).all<Article>();
  const articles=selected.length?(await db.prepare(`SELECT ${columns} FROM articles a WHERE a.publisher IN (${selected.map(()=>'?').join(',')}) AND COALESCE(a.published_at,a.collected_at)>=? ORDER BY COALESCE(a.published_at,a.collected_at) DESC LIMIT 500`).bind(...selected,new Date(Date.now()-48*3600000).toISOString()).all<Article>()).results:[];
  const statuses=selected.length?(await db.prepare(`SELECT publisher,section,status,count,checked_at AS checkedAt,message FROM sources WHERE publisher IN (${selected.map(()=>'?').join(',')})`).bind(...selected).all<SourceStatus>()).results:[];
- const savedTopics=validateTopics(JSON.parse(s?.topics||'[]') as Topic[],articles),topics=savedTopics.length?savedTopics:keywordTopics(articles);
+ const topicArticles=articles.filter(article=>article.section==='front').slice(0,180);
+ const savedTopics=validateTopics(JSON.parse(s?.topics||'[]') as Topic[],topicArticles),topics=savedTopics.length?savedTopics:keywordTopics(topicArticles);
  const cutoff=new Date(Date.now()-10*60*1000).toISOString();
  const breaking=selected.length?(await db.prepare(`SELECT ${columns} FROM articles a WHERE a.publisher IN (${selected.map(()=>'?').join(',')}) AND a.section='front' AND COALESCE(a.published_at,a.collected_at)>=? ORDER BY COALESCE(a.published_at,a.collected_at) DESC LIMIT 20`).bind(...selected,cutoff).all<Article>()).results:[];
  return {selected,articles,scraps:saved.results,topics,breaking,statuses,analysisMode:s?.analysis_mode||'keyword',analysisAt:s?.analysis_at||null,aiAvailable:false};
@@ -38,7 +39,7 @@ export async function refresh(userId:string){
   }
   for(let i=0;i<statements.length;i+=50)await db.batch(statements.slice(i,i+50));
   await indexArticlesInElastic(env,results.flatMap(result=>result.articles));
-  const state=await desk(userId),topics=keywordTopics(state.articles.filter(article=>article.section==='front'));
+  const state=await desk(userId),topics=keywordTopics(state.articles.filter(article=>article.section==='front').slice(0,180));
   await db.prepare('UPDATE settings SET topics=?,analysis_mode=?,analysis_at=? WHERE user_id=? AND revision=?').bind(JSON.stringify(topics),'keyword',new Date().toISOString(),userId,s.revision).run();
   const failed=results.filter(r=>r.status.status==='error').length;
   return {ok:true,warning:failed?`${failed}개 수집 경로에서 오류가 발생했습니다. 기존 기사는 유지합니다.`:null};

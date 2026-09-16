@@ -104,9 +104,11 @@ const similarity=(left:Set<string>,right:Set<string>)=>{
 };
 export function keywordTopics(articles:Article[]):Topic[] {
  const groups:Article[][]=[];
+ const tokenCache=new Map<string,Set<string>>();
+ const tokensFor=(article:Article)=>{let value=tokenCache.get(article.id);if(!value){value=rankingTokens(article.title);tokenCache.set(article.id,value);}return value;};
  for(const article of [...articles].sort((a,b)=>Date.parse(b.collectedAt)-Date.parse(a.collectedAt))){
-  const articleTokens=rankingTokens(article.title);
-  const best=groups.map((group,index)=>({index,score:Math.max(...group.map(candidate=>similarity(articleTokens,rankingTokens(candidate.title))))})).sort((a,b)=>b.score-a.score)[0];
+  const articleTokens=tokensFor(article);
+  const best=groups.map((group,index)=>({index,score:Math.max(...group.map(candidate=>similarity(articleTokens,tokensFor(candidate))))})).sort((a,b)=>b.score-a.score)[0];
   if(best?.score>0)groups[best.index].push(article);else groups.push([article]);
  }
  return validateTopics(groups.map(g=>({title:g[0].title,summary:'제목 유사도로 묶은 관련 보도입니다. 원문에서 맥락을 확인하세요.',articleIds:g.map(a=>a.id),publisherCount:0})),articles);
