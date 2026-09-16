@@ -4,19 +4,22 @@ export async function POST(request: Request) {
   try {
     const input = (await request.json()) as {
       email?: unknown;
-      password?: unknown;
+      passwordVerifier?: unknown;
+      passwordSalt?: unknown;
       displayName?: unknown;
     };
     if (
       typeof input.email !== "string" ||
-      typeof input.password !== "string" ||
+      typeof input.passwordVerifier !== "string" ||
+      typeof input.passwordSalt !== "string" ||
       typeof input.displayName !== "string"
     ) {
       throw new AuthError(400, "이름, 이메일, 비밀번호를 모두 입력해 주세요.");
     }
     const { user, cookie } = await registerUser({
       email: input.email,
-      password: input.password,
+      passwordVerifier: input.passwordVerifier,
+      passwordSalt: input.passwordSalt,
       displayName: input.displayName,
     });
     return Response.json(

@@ -13,12 +13,20 @@ export default function LoginForm({ returnTo }: { returnTo: string }) {
     setBusy(true);
     setError("");
     const form = new FormData(event.currentTarget);
-    const payload = {
-      displayName: String(form.get("displayName") ?? ""),
-      email: String(form.get("email") ?? ""),
-      password: String(form.get("password") ?? ""),
-    };
+    const displayName = String(form.get("displayName") ?? "");
+    const email = String(form.get("email") ?? "");
+    const password = String(form.get("password") ?? "");
     try {
+      let passwordSalt:string,iterations:number;
+      if(mode==="signup"){
+        passwordSalt=base64Url(crypto.getRandomValues(new Uint8Array(16)));iterations=100_000;
+      }else{
+        const challenge=await fetch(`/api/auth/challenge?email=${encodeURIComponent(email)}`,{cache:"no-store"});
+        if(!challenge.ok)throw new Error("로그인 준비 중 문제가 발생했습니다.");
+        ({salt:passwordSalt,iterations}=await challenge.json() as {salt:string;iterations:number});
+      }
+      const passwordVerifier=await derivePassword(password,passwordSalt,iterations);
+      const payload=mode==="signup"?{displayName,email,passwordVerifier,passwordSalt}:{email,passwordVerifier};
       const response = await fetch(`/api/auth/${mode}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -89,3 +97,11 @@ export default function LoginForm({ returnTo }: { returnTo: string }) {
     </main>
   );
 }
+
+async function derivePassword(password:string,salt:string,iterations:number){
+  const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(password),"PBKDF2",false,["deriveBits"]);
+  const bits=await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:base64UrlDecode(salt),iterations},key,256);
+  return base64Url(new Uint8Array(bits));
+}
+const base64Url=(bytes:Uint8Array)=>{let value="";for(const byte of bytes)value+=String.fromCharCode(byte);return btoa(value).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");};
+const base64UrlDecode=(value:string)=>{const binary=atob(value.replace(/-/g,"+").replace(/_/g,"/").padEnd(Math.ceil(value.length/4)*4,"="));return Uint8Array.from(binary,char=>char.charCodeAt(0));};

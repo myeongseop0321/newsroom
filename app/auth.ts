@@ -10,8 +10,8 @@ export type AppUser = {
 
 const SESSION_COOKIE = "pressroom_session";
 const SESSION_MAX_AGE = 60 * 60 * 24 * 30;
-// Cloudflare Workers supports PBKDF2 iteration counts up to 100,000.
-const PASSWORD_ITERATIONS = 100_000;
+export const PASSWORD_ITERATIONS = 100_000;
+const PASSWORD_HASH_VERSION = "v2:";
 
 export async function getAppUser(): Promise<AppUser | null> {
   const requestHeaders = await headers();
@@ -54,15 +54,15 @@ export async function getAppUser(): Promise<AppUser | null> {
 
 export async function registerUser(input: {
   email: string;
-  password: string;
+  passwordVerifier: string;
+  passwordSalt: string;
   displayName: string;
 }): Promise<{ user: AppUser; cookie: string }> {
   const email = normalizeEmail(input.email);
   const displayName = input.displayName.trim();
-  validateCredentials(email, input.password, displayName);
+  validateCredentials(email, input.passwordVerifier, input.passwordSalt, displayName);
 
-  const salt = randomToken(16);
-  const passwordHash = await hashPassword(input.password, salt);
+  const passwordHash = PASSWORD_HASH_VERSION + await sha256(input.passwordVerifier);
   const userId = crypto.randomUUID();
   const now = new Date().toISOString();
 
@@ -71,7 +71,7 @@ export async function registerUser(input: {
       .prepare(
         "INSERT INTO users(id,email,display_name,password_hash,password_salt,created_at) VALUES(?,?,?,?,?,?)",
       )
-      .bind(userId, email, displayName, passwordHash, salt, now)
+        .bind(userId, email, displayName, passwordHash, input.passwordSalt, now)
       .run();
   } catch (error) {
     if (String(error).toLowerCase().includes("unique")) {
@@ -89,12 +89,12 @@ export async function registerUser(input: {
 
 export async function loginUser(input: {
   email: string;
-  password: string;
+  passwordVerifier: string;
 }): Promise<{ user: AppUser; cookie: string }> {
   const email = normalizeEmail(input.email);
   const row = await database()
     .prepare(
-      "SELECT id,email,display_name AS displayName,password_hash AS passwordHash,password_salt AS passwordSalt FROM users WHERE email=?",
+      "SELECT id,email,display_name AS displayName,password_hash AS passwordHash FROM users WHERE email=?",
     )
     .bind(email)
     .first<{
@@ -102,13 +102,17 @@ export async function loginUser(input: {
       email: string;
       displayName: string;
       passwordHash: string;
-      passwordSalt: string;
     }>();
 
   if (!row) throw new AuthError(401, "이메일 또는 비밀번호를 확인해 주세요.");
-  const candidate = await hashPassword(input.password, row.passwordSalt);
+  if (!isVerifier(input.passwordVerifier)) throw new AuthError(400, "로그인 정보를 다시 입력해 주세요.");
+  const upgraded = row.passwordHash.startsWith(PASSWORD_HASH_VERSION);
+  const candidate = upgraded ? PASSWORD_HASH_VERSION + await sha256(input.passwordVerifier) : input.passwordVerifier;
   if (!constantTimeEqual(candidate, row.passwordHash)) {
     throw new AuthError(401, "이메일 또는 비밀번호를 확인해 주세요.");
+  }
+  if (!upgraded) {
+    await database().prepare("UPDATE users SET password_hash=? WHERE id=?").bind(PASSWORD_HASH_VERSION + await sha256(input.passwordVerifier), row.id).run();
   }
 
   const cookie = await createSession(row.id);
@@ -121,6 +125,12 @@ export async function loginUser(input: {
     },
     cookie,
   };
+}
+
+export async function getPasswordChallenge(emailValue: string): Promise<{ salt: string; iterations: number }> {
+  const email = normalizeEmail(emailValue);
+  const row = email.length <= 254 ? await database().prepare("SELECT password_salt AS salt FROM users WHERE email=?").bind(email).first<{salt:string}>() : null;
+  return {salt:row?.salt||randomToken(16),iterations:PASSWORD_ITERATIONS};
 }
 
 export async function logoutSession(cookieHeader: string | null): Promise<void> {
@@ -177,41 +187,21 @@ async function createSession(userId: string): Promise<string> {
   return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_MAX_AGE}`;
 }
 
-function validateCredentials(email: string, password: string, displayName: string) {
+function validateCredentials(email: string, verifier: string, salt: string, displayName: string) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
     throw new AuthError(400, "올바른 이메일을 입력해 주세요.");
   }
-  if (password.length < 8 || password.length > 128) {
-    throw new AuthError(400, "비밀번호는 8자 이상 입력해 주세요.");
-  }
+  if (!isVerifier(verifier)||!isSalt(salt)) throw new AuthError(400, "회원가입 정보를 다시 입력해 주세요.");
   if (!displayName || displayName.length > 40) {
     throw new AuthError(400, "이름은 1~40자로 입력해 주세요.");
   }
 }
 
+const isVerifier=(value:string)=>/^[A-Za-z0-9_-]{43}$/.test(value);
+const isSalt=(value:string)=>/^[A-Za-z0-9_-]{22}$/.test(value);
+
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
-}
-
-async function hashPassword(password: string, salt: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(password),
-    "PBKDF2",
-    false,
-    ["deriveBits"],
-  );
-  const bits = await crypto.subtle.deriveBits(
-    {
-      name: "PBKDF2",
-      hash: "SHA-256",
-      salt: base64UrlDecode(salt).buffer as ArrayBuffer,
-      iterations: PASSWORD_ITERATIONS,
-    },
-    key,
-    256,
-  );
-  return base64UrlEncode(new Uint8Array(bits));
 }
 
 async function sha256(value: string): Promise<string> {
@@ -232,12 +222,6 @@ function base64UrlEncode(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-
-function base64UrlDecode(value: string): Uint8Array {
-  const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
-  const binary = atob(padded);
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
 function constantTimeEqual(left: string, right: string): boolean {
